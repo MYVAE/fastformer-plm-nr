@@ -120,6 +120,9 @@ def train(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     dataloader = DataLoaderTrain(
+        worker_rank=0,
+        world_size=1,
+        cuda_device_idx=0,
         news_index=news_index,
         news_combined=news_combined,
         word_dict=word_dict,
@@ -260,12 +263,10 @@ def test(args):
         return arr
 
     news_dataset = NewsDataset(news_combined)
-    print(news_dataset.__len__())
     news_dataloader = DataLoader(news_dataset,
                                  batch_size=args.batch_size * 4,
                                  num_workers=args.num_workers,
                                  collate_fn=news_collate_fn)
-    print(news_dataloader.__len__())
     news_scoring = []
     with torch.no_grad():
         for input_ids in tqdm(news_dataloader):
@@ -279,6 +280,9 @@ def test(args):
     logging.info("news scoring num: {}".format(news_scoring.shape[0]))
 
     dataloader = DataLoaderTest(
+        worker_rank=0,
+        world_size=1,
+        cuda_device_idx=0,
         news_index=news_index,
         news_scoring=news_scoring,
         word_dict=word_dict,
@@ -308,7 +312,7 @@ def test(args):
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
-    for cnt, (log_vecs, log_mask, news_vecs, news_bias, labels, impression_id) in enumerate(dataloader):
+    for cnt, (log_vecs, log_mask, news_vecs, news_bias, impression_id) in enumerate(dataloader):
         his_lens = torch.sum(log_mask, dim=-1).to(torch.device("cpu")).detach().numpy()
 
         if args.enable_gpu:
@@ -316,38 +320,15 @@ def test(args):
             log_mask = log_mask.cuda(non_blocking=True)
 
         user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
-
-        for index, user_vec, news_vec, bias, label, his_len in zip(
-                range(len(labels)), user_vecs, news_vecs, news_bias, labels, his_lens):
-
-            if label.mean() == 0 or label.mean() == 1:
-                continue
-
+        for index, user_vec, news_vec, bias in zip(range(len(news_vecs)), user_vecs, news_vecs, news_bias):
             score = np.dot(
                 news_vec, user_vec
             )
-
-            impression_ids.append(imp_id)
+            impression_ids.append(impression_id)
             all_scores.append(score)
-
-            auc = roc_auc_score(label, score)
-            mrr = mrr_score(label, score)
-            ndcg5 = ndcg_score(label, score, k=5)
-            ndcg10 = ndcg_score(label, score, k=10)
-
-            AUC.append(auc)
-            MRR.append(mrr)
-            nDCG5.append(ndcg5)
-            nDCG10.append(ndcg10)
-
-        if cnt % args.log_steps == 0:
-            print_metrics(cnt * args.batch_size, get_mean([AUC, MRR, nDCG5, nDCG10]))
 
     # stop scoring
     dataloader.join()
-
-    for i in range(2):
-        print_metrics(args.batch_size, get_mean([AUC, MRR, nDCG5, nDCG10]))
 
     save_predictions(impression_ids, all_scores)
 

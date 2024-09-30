@@ -23,6 +23,8 @@ def get_files(dirname, filename_pat="*", recursive=False):
 
 
 def get_worker_files(dirname,
+                     worker_rank,
+                     world_size,
                      filename_pat="*",
                      shuffle=False,
                      seed=0):
@@ -35,10 +37,13 @@ def get_worker_files(dirname,
         random.seed(seed)
         random.shuffle(all_files)
         # g_mutex.release()
+    files = []
+    for i in range(worker_rank, len(all_files), world_size):
+        files.append(all_files[i])
     logging.info(
-        f"shuffle:{shuffle}, seed:{seed}, directory:{dirname}, files:{all_files}"
+        f"worker_rank:{worker_rank}, world_size:{world_size}, shuffle:{shuffle}, seed:{seed}, directory:{dirname}, files:{files}"
     )
-    return all_files
+    return files
 
 
 class StreamReader:
@@ -101,18 +106,22 @@ class StreamSampler:
         data_dir,
         filename_pat,
         batch_size,
+        worker_rank,
+        world_size,
         enable_shuffle=False,
         shuffle_buffer_size=1000,
         shuffle_seed=0,
     ):
         data_paths = get_worker_files(
             data_dir,
+            worker_rank,
+            world_size,
             filename_pat,
             shuffle=enable_shuffle,
             seed=shuffle_seed,
         )
         self.stream_reader = StreamReader(
-            data_paths, 
+            data_paths,
             batch_size,
             enable_shuffle,
             shuffle_buffer_size
@@ -126,9 +135,11 @@ class StreamSampler:
         """Implement iterator interface."""
         # logging.info(f"[StreamSampler] __next__")
         next_batch = self.stream_reader.get_next()
-        if not isinstance(next_batch, np.ndarray) and not isinstance(
-                next_batch, tuple):
+        if next_batch is None:
             raise StopIteration
+        # if not isinstance(next_batch, np.ndarray) and not isinstance(
+        #         next_batch, tuple):
+        #     raise StopIteration
         # print(next_batch.shape)
         return next_batch
 
@@ -162,12 +173,16 @@ class StreamSamplerTest(StreamSampler):
         data_dir,
         filename_pat,
         batch_size,
+        worker_rank,
+        world_size,
         enable_shuffle=False,
         shuffle_buffer_size=1000,
         shuffle_seed=0,
     ):
         data_paths = get_worker_files(
             data_dir,
+            worker_rank,
+            world_size,
             filename_pat,
             shuffle=enable_shuffle,
             seed=shuffle_seed,
