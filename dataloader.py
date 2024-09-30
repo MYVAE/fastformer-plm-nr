@@ -309,7 +309,7 @@ class DataLoaderTest(DataLoaderTrain):
                                                        self.user_log_length)
             user_feature = self.news_scoring[click_docs]
 
-            sample_news = self.trans_to_nindex([i for i in line[4].split()])
+            sample_news = self.trans_to_nindex(line[4].split())
 
             news_feature = self.news_scoring[sample_news]
             if self.news_bias_scoring is not None:
@@ -329,6 +329,5 @@ class DataLoaderTest(DataLoaderTrain):
         else:
             user_feature_batch = torch.FloatTensor(user_feature_batch)
             log_mask_batch = torch.FloatTensor(log_mask_batch)
-
         return user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, impression_id_batch
 

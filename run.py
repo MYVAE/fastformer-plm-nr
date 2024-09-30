@@ -15,6 +15,7 @@ from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 from model_bert import ModelBert
 from parameters import parse_args
+import json
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 
@@ -59,12 +60,7 @@ finetuneset = {
 
 
 def save_predictions(impression_ids, scores, output_file='prediction.txt'):
-    """
-    将预测的候选新闻点击概率按照排名保存为指定格式的文本文件
-    :param impression_ids: 每个用户的印象ID (ImpressionID) 列表
-    :param scores: 每个候选新闻的点击分数矩阵，形状为 (num_impressions, num_candidates)
-    :param output_file: 输出文件名
-    """
+    
     with open(output_file, 'w') as f_out:
         for i, score_list in enumerate(scores):
             # 按分数降序排列，返回的是排序后的索引+1（因为排名从1开始）
@@ -298,35 +294,24 @@ def test(args):
 
     from metrics import roc_auc_score, ndcg_score, mrr_score, ctr_score
 
-    AUC = []
-    MRR = []
-    nDCG5 = []
-    nDCG10 = []
-
-    impression_ids = []  # 用于存储印象ID
-    all_scores = []  # 用于存储每个候选新闻的分数
-
-    def print_metrics(cnt, x):
-        logging.info("Ed: {}: {}".format(cnt, '\t'.join(["{:0.2f}".format(i * 100) for i in x])))
-
-    def get_mean(arr):
-        return [np.array(i).mean() for i in arr]
+    impression_ids = []
+    all_scores = []
 
     for cnt, (log_vecs, log_mask, news_vecs, news_bias, impression_id) in enumerate(dataloader):
-        his_lens = torch.sum(log_mask, dim=-1).to(torch.device("cpu")).detach().numpy()
-
         if args.enable_gpu:
             log_vecs = log_vecs.cuda(non_blocking=True)
             log_mask = log_mask.cuda(non_blocking=True)
 
         user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
+        cnt = 0
         for index, user_vec, news_vec, bias in zip(range(len(news_vecs)), user_vecs, news_vecs, news_bias):
             score = np.dot(
                 news_vec, user_vec
             )
-            impression_ids.append(impression_id)
+            impression_ids.append(impression_id[cnt])
             all_scores.append(score)
-
+            cnt += 1
+    print(impression_ids)
     # stop scoring
     dataloader.join()
 
